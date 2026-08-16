@@ -1,0 +1,41 @@
+{
+  "//": "Copy to launch.json and fill in secrets. launch.json is gitignored.",
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug: serve",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}",
+      "args": ["serve"],
+      "env": {
+        "PORT": "8090",
+        "DATABASE_URL": "postgres://postgres:postgres@localhost:5432/analytics_dashboard?sslmode=disable",
+        "REDIS_URL": "redis://localhost:6380/0",
+        "CACHE_TTL_SECONDS": "120",
+        "CORS_ORIGIN": "http://localhost:3000,http://localhost:3001",
+        "GEMINI_API_KEY": "<your-gemini-api-key>",
+        "GEMINI_MODEL": "gemini-3.5-flash",
+        "JWT_SECRET": "<a-long-random-secret>",
+        "JWT_TTL_HOURS": "24",
+        "ASK_RATE_LIMIT": "15",
+        "ASK_RATE_WINDOW_SECONDS": "60",
+        "MAX_BODY_BYTES": "65536",
+        "MAX_QUESTION_CHARS": "1000"
+      }
+    },
+    {
+      "name": "Debug: seed",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}",
+      "args": ["seed"],
+      "env": {
+        "DATABASE_URL": "postgres://postgres:postgres@localhost:5432/analytics_dashboard?sslmode=disable",
+        "SEED_CSV_PATH": "data/mock_logistics_data.csv"
+      }
+    }
+  ]
+}

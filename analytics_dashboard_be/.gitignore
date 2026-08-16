@@ -1,0 +1,16 @@
+# Build output
+/bin/
+
+# Secrets & local config (NEVER commit — launch.json holds real API keys/JWT secret)
+.env
+.env.local
+.vscode/*
+!.vscode/launch.example.json
+
+# dbmate-generated (migrations in db/migrations/ are the source of truth)
+db/schema.sql
+
+# Logs & test artifacts
+*.log
+*.out
+coverage.txt

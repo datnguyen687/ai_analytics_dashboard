@@ -1,0 +1,18 @@
+# Netlify build config for the Next.js frontend.
+# The official Next.js runtime plugin handles SSR/ISR/routing and sets the
+# publish directory automatically — do not set `publish` by hand.
+
+[build]
+  command = "pnpm build"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # pnpm is detected from pnpm-lock.yaml; pin it for reproducible installs.
+  PNPM_VERSION = "10"
+  # Build-time API base. Override per-site in the Netlify UI (Site settings →
+  # Environment variables) or via `netlify env:set`. NEXT_PUBLIC_* is inlined at
+  # build time, so a change requires a rebuild/redeploy.
+  NEXT_PUBLIC_API_URL = "http://localhost:8080"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
