@@ -1,6 +1,11 @@
 # Build output
 /bin/
 
+# Delve debug binaries (VS Code Go debugging) & test binaries
+__debug_bin*
+debug
+*.test
+
 # Secrets & local config (NEVER commit — launch.json holds real API keys/JWT secret)
 .env
 .env.local
