@@ -71,7 +71,7 @@ var serveCmd = &cobra.Command{
 			Limit:         cfg.AskRateLimit,
 			WindowSeconds: cfg.AskRateWindow,
 		}
-		router := http.NewRouter(handler, authHandler, authSvc, askRL, cfg.MaxBodyBytes, cfg.CORSOrigins)
+		router := http.NewRouter(handler, authHandler, authSvc, askRL, cfg.MaxBodyBytes, cfg.MaxImportBytes, cfg.CORSOrigins)
 
 		log.Printf("listening on :%s", cfg.Port)
 		return router.Run(":" + cfg.Port)

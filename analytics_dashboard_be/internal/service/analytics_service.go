@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"sort"
 	"strings"
 
@@ -74,6 +75,28 @@ func (s *AnalyticsService) Dashboard(ctx context.Context, f domain.Filters) (dom
 // hash of the FULL normalized query (filters + search + status + sort + page), so
 // repeated searches, sort toggles, and page navigation are served from Redis
 // instead of re-querying Postgres each time.
+// ImportOrders parses an uploaded CSV, upserts the rows, and invalidates the
+// cached read models so the new data shows immediately.
+func (s *AnalyticsService) ImportOrders(ctx context.Context, r io.Reader, replace bool) (domain.ImportResult, error) {
+	orders, rowErrs, err := ParseOrdersCSV(r)
+	if err != nil {
+		return domain.ImportResult{}, domain.NewAPIError(400, "VALIDATION_ERROR", err.Error())
+	}
+	n, err := s.repo.ImportOrders(ctx, orders, replace)
+	if err != nil {
+		return domain.ImportResult{}, err
+	}
+	s.invalidate(ctx)
+	return domain.ImportResult{Imported: n, Failed: len(rowErrs), Errors: rowErrs, Replaced: replace}, nil
+}
+
+// invalidate drops the cached read models after a data change.
+func (s *AnalyticsService) invalidate(ctx context.Context) {
+	for _, p := range []string{"dashboard:", "orders:", "forecast:", "meta"} {
+		_ = s.cache.DeleteByPrefix(ctx, p)
+	}
+}
+
 func (s *AnalyticsService) Orders(ctx context.Context, q domain.OrderQuery) (domain.OrderPage, error) {
 	key := "orders:" + hashOrderQuery(q)
 	var cached domain.OrderPage

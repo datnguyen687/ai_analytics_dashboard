@@ -1,11 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SearchInput, Select } from "@/components/controls";
 import { FilterBar } from "@/components/filter-bar";
 import { Card, StatusChip } from "@/components/ui";
+import { useAuth } from "@/lib/auth-context";
 import { DEFAULT_FILTERS, fmtMoney } from "@/lib/analytics";
-import { API_BASE, getOrders, type ApiOrder, type OrderPageResponse } from "@/lib/api";
+import {
+  API_BASE,
+  getOrders,
+  importOrders,
+  type ApiOrder,
+  type OrderPageResponse,
+} from "@/lib/api";
+import { messageForError } from "@/lib/errors";
 
 const SORTS: { value: string; label: string }[] = [
   { value: "orderDate-desc", label: "Newest first" },
@@ -28,6 +36,37 @@ export default function OrdersPage() {
   const [data, setData] = useState<OrderPageResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // CSV import (admin only).
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [replaceAll, setReplaceAll] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const onFilePicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!file) return;
+    setImporting(true);
+    setImportMsg(null);
+    try {
+      const res = await importOrders(file, replaceAll);
+      const extra = res.failed > 0 ? ` (${res.failed} rows skipped)` : "";
+      setImportMsg({
+        ok: true,
+        text: `Imported ${res.imported.toLocaleString()} orders${res.replaced ? " (replaced all)" : ""}${extra}.`,
+      });
+      setPage(0);
+      setReloadKey((k) => k + 1); // refetch the table
+    } catch (err) {
+      setImportMsg({ ok: false, text: messageForError(err) });
+    } finally {
+      setImporting(false);
+    }
+  };
 
   // Debounce the search box so we don't fire a request per keystroke.
   useEffect(() => {
@@ -56,7 +95,7 @@ export default function OrdersPage() {
         setLoading(false);
       });
     return () => ctrl.abort();
-  }, [filters, debouncedQuery, status, sort, page]);
+  }, [filters, debouncedQuery, status, sort, page, reloadKey]);
 
   const rows = data?.rows ?? [];
   const total = data?.total ?? 0;
@@ -106,7 +145,60 @@ export default function OrdersPage() {
             ]}
           />
           <Select label="Sort" value={sort} onChange={setSort} options={SORTS} />
+
+          {isAdmin && (
+            <div className="ml-auto flex items-center gap-2">
+              <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+                <input
+                  type="checkbox"
+                  checked={replaceAll}
+                  onChange={(e) => setReplaceAll(e.target.checked)}
+                  className="size-3.5 accent-[var(--series-1)]"
+                />
+                Replace all
+              </label>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".csv,text/csv"
+                onChange={onFilePicked}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={importing}
+                className="flex h-9 items-center gap-2 rounded-lg border border-[var(--border)] px-3 text-xs font-medium transition-colors hover:bg-[var(--hover)] disabled:opacity-50"
+              >
+                <svg viewBox="0 0 16 16" aria-hidden className="size-3.5">
+                  <path
+                    d="M8 10V2m0 0L5 5m3-3l3 3M2.5 10v2a1.5 1.5 0 001.5 1.5h8a1.5 1.5 0 001.5-1.5v-2"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                {importing ? "Importing…" : "Import CSV"}
+              </button>
+            </div>
+          )}
         </div>
+
+        {importMsg && (
+          <p
+            className="rounded-lg px-3 py-2 text-xs font-medium"
+            style={{
+              color: importMsg.ok ? "var(--status-good)" : "var(--status-critical)",
+              background: importMsg.ok
+                ? "color-mix(in srgb, var(--status-good) 10%, transparent)"
+                : "color-mix(in srgb, var(--status-critical) 10%, transparent)",
+            }}
+          >
+            {importMsg.text}
+          </p>
+        )}
       </div>
 
       <Card className="p-0">

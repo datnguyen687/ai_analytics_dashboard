@@ -93,3 +93,11 @@ type OrderPage struct {
 	Page     int     `json:"page"`
 	PageSize int     `json:"pageSize"`
 }
+
+// ImportResult summarises a CSV import.
+type ImportResult struct {
+	Imported int      `json:"imported"`
+	Failed   int      `json:"failed"`
+	Errors   []string `json:"errors"`
+	Replaced bool     `json:"replaced"`
+}

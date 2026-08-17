@@ -21,12 +21,15 @@ type AskRateLimit struct {
 	WindowSeconds int
 }
 
-func NewRouter(h *Handler, authH *AuthHandler, auth *service.AuthService, askRL AskRateLimit, maxBodyBytes int64, corsOrigins []string) *gin.Engine {
+func NewRouter(h *Handler, authH *AuthHandler, auth *service.AuthService, askRL AskRateLimit, maxBodyBytes, maxImportBytes int64, corsOrigins []string) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery(), gin.Logger())
 
-	// Reject oversized request bodies before any handler reads them.
-	r.Use(BodyLimit(maxBodyBytes))
+	importMaxBytes = maxImportBytes
+
+	// Reject oversized request bodies before any handler reads them. The CSV
+	// import route is exempt — it enforces its own (larger) limit.
+	r.Use(BodyLimit(maxBodyBytes, "/api/v1/admin/orders/import"))
 
 	allowed := make(map[string]bool, len(corsOrigins))
 	for _, o := range corsOrigins {
@@ -75,6 +78,7 @@ func NewRouter(h *Handler, authH *AuthHandler, auth *service.AuthService, askRL 
 	admin.Use(RequireAuth(auth), RequireClaim(domain.ClaimAdminManage))
 	{
 		admin.GET("/users", authH.Users)
+		admin.POST("/orders/import", h.ImportOrders)
 	}
 	return r
 }

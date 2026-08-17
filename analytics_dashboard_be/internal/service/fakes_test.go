@@ -76,6 +76,10 @@ func (f *fakeOrderRepo) MonthlyUnits(context.Context, string) ([]domain.MonthUni
 	}, nil
 }
 
+func (f *fakeOrderRepo) ImportOrders(_ context.Context, orders []domain.Order, _ bool) (int, error) {
+	return len(orders), nil
+}
+
 // --- fake in-memory Cache ---
 
 type fakeCache struct {
@@ -102,6 +106,17 @@ func (c *fakeCache) Set(_ context.Context, key string, value interface{}, _ int)
 	b, _ := json.Marshal(value)
 	c.data[key] = b
 	c.sets++
+	return nil
+}
+
+func (c *fakeCache) DeleteByPrefix(_ context.Context, prefix string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for k := range c.data {
+		if len(k) >= len(prefix) && k[:len(prefix)] == prefix {
+			delete(c.data, k)
+		}
+	}
 	return nil
 }
 

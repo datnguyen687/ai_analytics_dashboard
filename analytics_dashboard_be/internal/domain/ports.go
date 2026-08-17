@@ -16,6 +16,9 @@ type OrderRepository interface {
 	// MonthlyUnits returns summed quantity per month, oldest first — the input
 	// to the forecasting tool. Category "" means all categories.
 	MonthlyUnits(ctx context.Context, category string) ([]MonthUnits, error)
+	// ImportOrders upserts orders by order_id (optionally truncating first).
+	// Returns the number of rows written.
+	ImportOrders(ctx context.Context, orders []Order, replace bool) (int, error)
 }
 
 // MonthUnits is one month of summed shipped units for forecasting.
@@ -49,6 +52,9 @@ type RateLimiter interface {
 type Cache interface {
 	Get(ctx context.Context, key string, dest interface{}) (bool, error)
 	Set(ctx context.Context, key string, value interface{}, ttlSeconds int) error
+	// DeleteByPrefix removes all keys starting with prefix (used to invalidate
+	// cached read models after a data import).
+	DeleteByPrefix(ctx context.Context, prefix string) error
 }
 
 // Interpretation is the structured, validated output of the interpretation

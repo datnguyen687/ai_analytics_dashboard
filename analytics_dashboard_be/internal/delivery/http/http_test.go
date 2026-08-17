@@ -42,6 +42,9 @@ func (fakeRepo) Orders(context.Context, domain.OrderQuery) (domain.OrderPage, er
 func (fakeRepo) MonthlyUnits(context.Context, string) ([]domain.MonthUnits, error) {
 	return []domain.MonthUnits{{Bucket: "2025-01", Units: 10}}, nil
 }
+func (fakeRepo) ImportOrders(_ context.Context, orders []domain.Order, _ bool) (int, error) {
+	return len(orders), nil
+}
 
 func buildRouter(t *testing.T) *gin.Engine {
 	t.Helper()
@@ -63,7 +66,7 @@ func buildRouter(t *testing.T) *gin.Engine {
 	h := NewHandler(analytics, forecast, ask, 200)
 	authH := NewAuthHandler(auth)
 	askRL := AskRateLimit{Limiter: cache.NewMemoryRateLimiter(), Limit: 1, WindowSeconds: 60}
-	return NewRouter(h, authH, auth, askRL, 1024, []string{"http://localhost:3000"})
+	return NewRouter(h, authH, auth, askRL, 1024, 5*1024*1024, []string{"http://localhost:3000"})
 }
 
 type fakeUserRepo struct{ users map[string]domain.User }

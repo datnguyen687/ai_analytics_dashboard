@@ -28,6 +28,7 @@ type Config struct {
 	AskRateWindow int   // window length in seconds
 	MaxBodyBytes  int64 // reject request bodies larger than this
 	MaxQuestionChars int // reject /ask questions longer than this
+	MaxImportBytes int64 // larger cap for the CSV import endpoint
 }
 
 func Load() Config {
@@ -45,8 +46,9 @@ func Load() Config {
 		JWTTTLHours:   envInt("JWT_TTL_HOURS", 24),
 		AskRateLimit:     envInt("ASK_RATE_LIMIT", 15),
 		AskRateWindow:    envInt("ASK_RATE_WINDOW_SECONDS", 60),
-		MaxBodyBytes:     int64(envInt("MAX_BODY_BYTES", 64*1024)), // 64 KB
+		MaxBodyBytes:     int64(envInt("MAX_BODY_BYTES", 64*1024)),        // 64 KB
 		MaxQuestionChars: envInt("MAX_QUESTION_CHARS", 1000),
+		MaxImportBytes:   int64(envInt("MAX_IMPORT_BYTES", 10*1024*1024)), // 10 MB
 	}
 }
 

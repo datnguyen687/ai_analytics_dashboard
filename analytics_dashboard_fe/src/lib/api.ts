@@ -275,3 +275,26 @@ export async function getAdminUsers(signal?: AbortSignal): Promise<AdminUser[]> 
   const r = await getJSON<{ users: AdminUser[] }>(`/api/v1/admin/users`, signal);
   return r.users ?? [];
 }
+
+export interface ImportResult {
+  imported: number;
+  failed: number;
+  errors: string[];
+  replaced: boolean;
+}
+
+export function importOrders(
+  file: File,
+  replace: boolean,
+  signal?: AbortSignal,
+): Promise<ImportResult> {
+  const form = new FormData();
+  form.append("file", file);
+  if (replace) form.append("replace", "true");
+  // FormData sets its own multipart Content-Type; request() adds the auth header.
+  return request<ImportResult>(`${BASE}/api/v1/admin/orders/import`, {
+    method: "POST",
+    body: form,
+    signal,
+  });
+}

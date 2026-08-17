@@ -76,6 +76,35 @@ func (h *Handler) Dashboard(c *gin.Context) {
 	c.JSON(http.StatusOK, d)
 }
 
+// importMaxBytes bounds the CSV upload; set from config in the router.
+var importMaxBytes int64 = 10 * 1024 * 1024
+
+// ImportOrders ingests an uploaded orders CSV (admin-only). Multipart field
+// "file" is the CSV; optional "replace=true" truncates before importing.
+func (h *Handler) ImportOrders(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, importMaxBytes)
+
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		fail(c, domain.NewAPIError(http.StatusBadRequest, "VALIDATION_ERROR", "a CSV file (field 'file') is required"))
+		return
+	}
+	f, err := fileHeader.Open()
+	if err != nil {
+		fail(c, domain.ErrInternal)
+		return
+	}
+	defer f.Close()
+
+	replace := c.PostForm("replace") == "true"
+	result, err := h.analytics.ImportOrders(c.Request.Context(), f, replace)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
 func (h *Handler) Orders(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "0"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "15"))

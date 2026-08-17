@@ -49,6 +49,27 @@ func (c *RedisCache) Set(ctx context.Context, key string, value interface{}, ttl
 	return c.client.Set(ctx, key, b, time.Duration(ttlSeconds)*time.Second).Err()
 }
 
+// DeleteByPrefix removes every key starting with prefix, scanning in batches so
+// it never blocks Redis with a big KEYS call.
+func (c *RedisCache) DeleteByPrefix(ctx context.Context, prefix string) error {
+	var cursor uint64
+	for {
+		keys, next, err := c.client.Scan(ctx, cursor, prefix+"*", 200).Result()
+		if err != nil {
+			return err
+		}
+		if len(keys) > 0 {
+			if err := c.client.Del(ctx, keys...).Err(); err != nil {
+				return err
+			}
+		}
+		if next == 0 {
+			return nil
+		}
+		cursor = next
+	}
+}
+
 // Allow implements domain.RateLimiter with a fixed-window counter: INCR the key
 // and set the TTL on first hit; over the limit → denied with the reset time.
 // Redis errors fail OPEN so a cache outage never blocks the API.
@@ -78,3 +99,4 @@ type NoopCache struct{}
 
 func (NoopCache) Get(context.Context, string, interface{}) (bool, error) { return false, nil }
 func (NoopCache) Set(context.Context, string, interface{}, int) error    { return nil }
+func (NoopCache) DeleteByPrefix(context.Context, string) error           { return nil }
