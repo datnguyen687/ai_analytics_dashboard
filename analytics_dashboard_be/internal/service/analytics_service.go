@@ -75,19 +75,24 @@ func (s *AnalyticsService) Dashboard(ctx context.Context, f domain.Filters) (dom
 // hash of the FULL normalized query (filters + search + status + sort + page), so
 // repeated searches, sort toggles, and page navigation are served from Redis
 // instead of re-querying Postgres each time.
-// ImportOrders parses an uploaded CSV, upserts the rows, and invalidates the
-// cached read models so the new data shows immediately.
-func (s *AnalyticsService) ImportOrders(ctx context.Context, r io.Reader, replace bool) (domain.ImportResult, error) {
+// ImportOrders parses an uploaded CSV, writes the rows per opts, and invalidates
+// the cached read models so the new data shows immediately.
+func (s *AnalyticsService) ImportOrders(ctx context.Context, r io.Reader, opts domain.ImportOptions) (domain.ImportResult, error) {
+	if opts.OnConflict != "ignore" {
+		opts.OnConflict = "update"
+	}
 	orders, rowErrs, err := ParseOrdersCSV(r)
 	if err != nil {
 		return domain.ImportResult{}, domain.NewAPIError(400, "VALIDATION_ERROR", err.Error())
 	}
-	n, err := s.repo.ImportOrders(ctx, orders, replace)
+	imported, skipped, err := s.repo.ImportOrders(ctx, orders, opts)
 	if err != nil {
 		return domain.ImportResult{}, err
 	}
 	s.invalidate(ctx)
-	return domain.ImportResult{Imported: n, Failed: len(rowErrs), Errors: rowErrs, Replaced: replace}, nil
+	return domain.ImportResult{
+		Imported: imported, Skipped: skipped, Failed: len(rowErrs), Errors: rowErrs, Replaced: opts.Replace,
+	}, nil
 }
 
 var validStatuses = map[domain.OrderStatus]bool{

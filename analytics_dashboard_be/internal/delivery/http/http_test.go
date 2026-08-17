@@ -1,8 +1,10 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"mime/multipart"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -42,8 +44,8 @@ func (fakeRepo) Orders(context.Context, domain.OrderQuery) (domain.OrderPage, er
 func (fakeRepo) MonthlyUnits(context.Context, string) ([]domain.MonthUnits, error) {
 	return []domain.MonthUnits{{Bucket: "2025-01", Units: 10}}, nil
 }
-func (fakeRepo) ImportOrders(_ context.Context, orders []domain.Order, _ bool) (int, error) {
-	return len(orders), nil
+func (fakeRepo) ImportOrders(_ context.Context, orders []domain.Order, _ domain.ImportOptions) (int, int, error) {
+	return len(orders), 0, nil
 }
 func (fakeRepo) GetOrder(_ context.Context, id string) (domain.Order, bool, error) {
 	if id == "ORD-1" {
@@ -261,6 +263,51 @@ func TestInvalidTokenRejected(t *testing.T) {
 	w := do(t, buildRouter(t), "GET", "/api/v1/meta", "garbage.token.here", "")
 	if w.Code != 401 || codeOf(w) != "AUTH_TOKEN_INVALID" {
 		t.Fatalf("got %d %s", w.Code, codeOf(w))
+	}
+}
+
+func multipartCSV(t *testing.T, filename, content string) (*bytes.Buffer, string) {
+	t.Helper()
+	body := &bytes.Buffer{}
+	w := multipart.NewWriter(body)
+	fw, _ := w.CreateFormFile("file", filename)
+	fw.Write([]byte(content))
+	w.WriteField("onConflict", "ignore")
+	w.Close()
+	return body, w.FormDataContentType()
+}
+
+func TestImportOrders(t *testing.T) {
+	r := buildRouter(t)
+	adminTok := loginToken(t, r, "boss")
+	userTok := loginToken(t, r, "alice")
+
+	csv := "client_id,order_id,order_date,delivery_date,carrier,origin_city,destination_city,status,sku,product_category,quantity,unit_price_usd,order_value_usd,is_promo,promo_discount_pct,region,warehouse\n" +
+		"CL-1,ORD-9,2025-06-01,2025-06-03,DHL,A,B,delivered,SKU-1,PAPER,2,5,10,0,0,EU,LON-FC1\n"
+
+	post := func(token, filename, content string) *httptest.ResponseRecorder {
+		body, ct := multipartCSV(t, filename, content)
+		req := httptest.NewRequest("POST", "/api/v1/admin/orders/import", body)
+		req.Header.Set("Content-Type", ct)
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w
+	}
+
+	if w := post(userTok, "orders.csv", csv); w.Code != 403 {
+		t.Fatalf("USER import = %d, want 403", w.Code)
+	}
+	if w := post(adminTok, "orders.txt", csv); w.Code != 400 || codeOf(w) != "VALIDATION_ERROR" {
+		t.Fatalf("wrong extension = %d %s, want 400", w.Code, codeOf(w))
+	}
+	if w := post(adminTok, "orders.csv", "a,b\n1,2\n"); w.Code != 400 {
+		t.Fatalf("bad columns = %d, want 400", w.Code)
+	}
+	if w := post(adminTok, "orders.csv", csv); w.Code != 200 {
+		t.Fatalf("valid import = %d %s, want 200", w.Code, w.Body.String())
 	}
 }
 

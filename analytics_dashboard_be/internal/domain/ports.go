@@ -16,9 +16,9 @@ type OrderRepository interface {
 	// MonthlyUnits returns summed quantity per month, oldest first — the input
 	// to the forecasting tool. Category "" means all categories.
 	MonthlyUnits(ctx context.Context, category string) ([]MonthUnits, error)
-	// ImportOrders upserts orders by order_id (optionally truncating first).
-	// Returns the number of rows written.
-	ImportOrders(ctx context.Context, orders []Order, replace bool) (int, error)
+	// ImportOrders writes orders per ImportOptions (truncate + conflict handling).
+	// Returns rows imported (inserted/updated) and skipped (ignored duplicates).
+	ImportOrders(ctx context.Context, orders []Order, opts ImportOptions) (imported, skipped int, err error)
 
 	// --- single-order CRUD ---
 	GetOrder(ctx context.Context, orderID string) (Order, bool, error)

@@ -10,7 +10,6 @@ import {
   API_BASE,
   deleteOrder,
   getOrders,
-  importOrders,
   type ApiOrder,
   type OrderPageResponse,
   type OrderWrite,
@@ -18,6 +17,7 @@ import {
 import { messageForError } from "@/lib/errors";
 import { EMPTY_ORDER, OrderFormModal } from "@/components/order-form";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { ImportDialog } from "@/components/import-dialog";
 
 const SORTS: { value: string; label: string }[] = [
   { value: "orderDate-desc", label: "Newest first" },
@@ -28,6 +28,14 @@ const SORTS: { value: string; label: string }[] = [
 ];
 
 const PAGE_SIZE = 15;
+const MAX_IMPORT_MB = 10;
+const MAX_IMPORT_BYTES = MAX_IMPORT_MB * 1024 * 1024;
+// Must match the backend's required columns.
+const REQUIRED_COLUMNS = [
+  "client_id", "order_id", "order_date", "delivery_date", "carrier", "origin_city",
+  "destination_city", "status", "sku", "product_category", "quantity",
+  "unit_price_usd", "order_value_usd", "is_promo", "promo_discount_pct", "region", "warehouse",
+];
 
 export default function OrdersPage() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
@@ -46,9 +54,8 @@ export default function OrdersPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
   const fileRef = useRef<HTMLInputElement>(null);
-  const [replaceAll, setReplaceAll] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [importInfo, setImportInfo] = useState<{ file: File; rows: number; headerError: string | null } | null>(null);
 
   // Create/edit modal + delete.
   const [modal, setModal] = useState<{ initial: OrderWrite; editingId: string | null } | null>(null);
@@ -99,26 +106,39 @@ export default function OrdersPage() {
     }
   };
 
+  // Validate the file (extension + size) and inspect it (rows + header) before
+  // showing the confirm panel — the backend re-checks all of this.
   const onFilePicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = ""; // allow re-picking the same file
     if (!file) return;
-    setImporting(true);
     setImportMsg(null);
-    try {
-      const res = await importOrders(file, replaceAll);
-      const extra = res.failed > 0 ? ` (${res.failed} rows skipped)` : "";
-      setImportMsg({
-        ok: true,
-        text: `Imported ${res.imported.toLocaleString()} orders${res.replaced ? " (replaced all)" : ""}${extra}.`,
-      });
-      setPage(0);
-      setReloadKey((k) => k + 1); // refetch the table
-    } catch (err) {
-      setImportMsg({ ok: false, text: messageForError(err) });
-    } finally {
-      setImporting(false);
+
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setImportMsg({ ok: false, text: "Please choose a .csv file." });
+      return;
     }
+    if (file.size > MAX_IMPORT_BYTES) {
+      setImportMsg({
+        ok: false,
+        text: `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Max ${MAX_IMPORT_MB} MB.`,
+      });
+      return;
+    }
+
+    const text = await file.text();
+    const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
+    const rows = Math.max(0, lines.length - 1);
+    const header = (lines[0] ?? "").split(",").map((h) => h.trim().toLowerCase());
+    const missing = REQUIRED_COLUMNS.filter((c) => !header.includes(c));
+    const headerError =
+      lines.length < 2
+        ? "The file has no data rows."
+        : missing.length
+          ? `Missing required column${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}.`
+          : null;
+
+    setImportInfo({ file, rows, headerError });
   };
 
   // Debounce the search box so we don't fire a request per keystroke.
@@ -212,15 +232,6 @@ export default function OrdersPage() {
                 </svg>
                 Add order
               </button>
-              <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
-                <input
-                  type="checkbox"
-                  checked={replaceAll}
-                  onChange={(e) => setReplaceAll(e.target.checked)}
-                  className="size-3.5 accent-[var(--series-1)]"
-                />
-                Replace all
-              </label>
               <input
                 ref={fileRef}
                 type="file"
@@ -231,8 +242,7 @@ export default function OrdersPage() {
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                disabled={importing}
-                className="flex h-9 items-center gap-2 rounded-lg border border-[var(--border)] px-3 text-xs font-medium transition-colors hover:bg-[var(--hover)] disabled:opacity-50"
+                className="flex h-9 items-center gap-2 rounded-lg border border-[var(--border)] px-3 text-xs font-medium transition-colors hover:bg-[var(--hover)]"
               >
                 <svg viewBox="0 0 16 16" aria-hidden className="size-3.5">
                   <path
@@ -244,7 +254,7 @@ export default function OrdersPage() {
                     strokeLinejoin="round"
                   />
                 </svg>
-                {importing ? "Importing…" : "Import CSV"}
+                Import CSV
               </button>
             </div>
           )}
@@ -373,6 +383,21 @@ export default function OrdersPage() {
           onSaved={(text) => {
             setRowMsg({ ok: true, text });
             setImportMsg(null);
+            setReloadKey((k) => k + 1);
+          }}
+        />
+      )}
+
+      {importInfo && (
+        <ImportDialog
+          file={importInfo.file}
+          rows={importInfo.rows}
+          headerError={importInfo.headerError}
+          onClose={() => setImportInfo(null)}
+          onDone={(msg) => {
+            setImportMsg(msg);
+            setRowMsg(null);
+            setPage(0);
             setReloadKey((k) => k + 1);
           }}
         />

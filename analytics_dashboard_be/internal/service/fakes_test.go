@@ -109,8 +109,8 @@ func (f *fakeOrderRepo) MonthlyUnits(context.Context, string) ([]domain.MonthUni
 	}, nil
 }
 
-func (f *fakeOrderRepo) ImportOrders(_ context.Context, orders []domain.Order, _ bool) (int, error) {
-	return len(orders), nil
+func (f *fakeOrderRepo) ImportOrders(_ context.Context, orders []domain.Order, _ domain.ImportOptions) (int, int, error) {
+	return len(orders), 0, nil
 }
 
 // --- fake in-memory Cache ---

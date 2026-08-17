@@ -278,19 +278,26 @@ export async function getAdminUsers(signal?: AbortSignal): Promise<AdminUser[]> 
 
 export interface ImportResult {
   imported: number;
+  skipped: number;
   failed: number;
   errors: string[];
   replaced: boolean;
 }
 
+export interface ImportOptions {
+  replace: boolean;
+  onConflict: "update" | "ignore";
+}
+
 export function importOrders(
   file: File,
-  replace: boolean,
+  opts: ImportOptions,
   signal?: AbortSignal,
 ): Promise<ImportResult> {
   const form = new FormData();
   form.append("file", file);
-  if (replace) form.append("replace", "true");
+  if (opts.replace) form.append("replace", "true");
+  form.append("onConflict", opts.onConflict);
   // FormData sets its own multipart Content-Type; request() adds the auth header.
   return request<ImportResult>(`${BASE}/api/v1/admin/orders/import`, {
     method: "POST",

@@ -392,57 +392,66 @@ func (r *OrderRepo) DeleteOrder(ctx context.Context, orderID string) (bool, erro
 	return n > 0, nil
 }
 
-// ImportOrders writes orders in a single transaction, upserting by order_id.
-// When replace is true the table is truncated first (a clean re-init).
-func (r *OrderRepo) ImportOrders(ctx context.Context, orders []domain.Order, replace bool) (int, error) {
+const importUpdateClause = `ON CONFLICT (order_id) DO UPDATE SET
+	client_id=EXCLUDED.client_id, order_date=EXCLUDED.order_date,
+	delivery_date=EXCLUDED.delivery_date, carrier=EXCLUDED.carrier,
+	origin_city=EXCLUDED.origin_city, destination_city=EXCLUDED.destination_city,
+	status=EXCLUDED.status, sku=EXCLUDED.sku, product_category=EXCLUDED.product_category,
+	quantity=EXCLUDED.quantity, unit_price_usd=EXCLUDED.unit_price_usd,
+	order_value_usd=EXCLUDED.order_value_usd, is_promo=EXCLUDED.is_promo,
+	promo_discount_pct=EXCLUDED.promo_discount_pct, region=EXCLUDED.region,
+	warehouse=EXCLUDED.warehouse, transit_days=EXCLUDED.transit_days`
+
+// ImportOrders writes orders in a single transaction. On duplicate order_id it
+// either updates (upsert) or does nothing (ignore); when opts.Replace is set the
+// table is truncated first. Returns imported (rows written) and skipped (ignored
+// duplicates).
+func (r *OrderRepo) ImportOrders(ctx context.Context, orders []domain.Order, opts domain.ImportOptions) (int, int, error) {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer tx.Rollback() //nolint: errcheck — no-op after a successful commit
 
-	if replace {
+	if opts.Replace {
 		if _, err := tx.ExecContext(ctx, "TRUNCATE orders"); err != nil {
-			return 0, err
+			return 0, 0, err
 		}
 	}
 
-	const upsert = `
+	conflict := importUpdateClause
+	if opts.OnConflict == "ignore" {
+		conflict = "ON CONFLICT (order_id) DO NOTHING"
+	}
+	stmt, err := tx.PreparexContext(ctx, fmt.Sprintf(`
 		INSERT INTO orders
 			(client_id, order_id, order_date, delivery_date, carrier, origin_city, destination_city,
 			 status, sku, product_category, quantity, unit_price_usd, order_value_usd, is_promo,
 			 promo_discount_pct, region, warehouse, transit_days)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-		ON CONFLICT (order_id) DO UPDATE SET
-			client_id=EXCLUDED.client_id, order_date=EXCLUDED.order_date,
-			delivery_date=EXCLUDED.delivery_date, carrier=EXCLUDED.carrier,
-			origin_city=EXCLUDED.origin_city, destination_city=EXCLUDED.destination_city,
-			status=EXCLUDED.status, sku=EXCLUDED.sku, product_category=EXCLUDED.product_category,
-			quantity=EXCLUDED.quantity, unit_price_usd=EXCLUDED.unit_price_usd,
-			order_value_usd=EXCLUDED.order_value_usd, is_promo=EXCLUDED.is_promo,
-			promo_discount_pct=EXCLUDED.promo_discount_pct, region=EXCLUDED.region,
-			warehouse=EXCLUDED.warehouse, transit_days=EXCLUDED.transit_days`
-	stmt, err := tx.PreparexContext(ctx, upsert)
+		%s`, conflict))
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer stmt.Close()
 
-	count := 0
+	imported, skipped := 0, 0
 	for _, o := range orders {
-		if _, err := stmt.ExecContext(ctx,
-			o.ClientID, o.OrderID, o.OrderDate, o.DeliveryDate, o.Carrier, o.OriginCity, o.DestinationCity,
-			o.Status, o.SKU, o.Category, o.Quantity, o.UnitPrice, o.OrderValue, o.IsPromo,
-			o.PromoDiscount, o.Region, o.Warehouse, o.TransitDays,
-		); err != nil {
-			return 0, fmt.Errorf("insert order %s: %w", o.OrderID, err)
+		res, err := stmt.ExecContext(ctx, orderArgs(o)...)
+		if err != nil {
+			return 0, 0, fmt.Errorf("insert order %s: %w", o.OrderID, err)
 		}
-		count++
+		// DO NOTHING → 0 rows affected on a duplicate; otherwise 1.
+		if n, _ := res.RowsAffected(); n > 0 {
+			imported++
+		} else {
+			skipped++
+		}
 	}
 	if err := tx.Commit(); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	return count, nil
+	return imported, skipped, nil
 }
 
 func (r *OrderRepo) MonthlyUnits(ctx context.Context, category string) ([]domain.MonthUnits, error) {

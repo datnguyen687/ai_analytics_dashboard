@@ -94,10 +94,17 @@ type OrderPage struct {
 	PageSize int     `json:"pageSize"`
 }
 
+// ImportOptions controls how a CSV import handles the table and duplicates.
+type ImportOptions struct {
+	Replace    bool   // truncate the table before importing
+	OnConflict string // "update" (upsert) | "ignore" (skip existing order_id)
+}
+
 // ImportResult summarises a CSV import.
 type ImportResult struct {
-	Imported int      `json:"imported"`
-	Failed   int      `json:"failed"`
+	Imported int      `json:"imported"` // rows inserted or updated
+	Skipped  int      `json:"skipped"`  // duplicate rows ignored (ignore mode)
+	Failed   int      `json:"failed"`   // rows that failed to parse
 	Errors   []string `json:"errors"`
 	Replaced bool     `json:"replaced"`
 }

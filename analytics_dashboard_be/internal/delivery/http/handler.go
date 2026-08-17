@@ -1,8 +1,10 @@
 package http
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -80,15 +82,32 @@ func (h *Handler) Dashboard(c *gin.Context) {
 var importMaxBytes int64 = 10 * 1024 * 1024
 
 // ImportOrders ingests an uploaded orders CSV (admin-only). Multipart field
-// "file" is the CSV; optional "replace=true" truncates before importing.
+// "file" is the CSV; "replace=true" truncates first; "onConflict" is
+// "update" (default) or "ignore". The upload is size- and extension-checked.
 func (h *Handler) ImportOrders(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, importMaxBytes)
 
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
+		// MaxBytesReader trips here when the upload is over the limit.
+		var mbe *http.MaxBytesError
+		if errors.As(err, &mbe) {
+			fail(c, domain.ErrPayloadTooLarge)
+			return
+		}
 		fail(c, domain.NewAPIError(http.StatusBadRequest, "VALIDATION_ERROR", "a CSV file (field 'file') is required"))
 		return
 	}
+	// Server-side format check: extension + declared size.
+	if !strings.EqualFold(filepath.Ext(fileHeader.Filename), ".csv") {
+		fail(c, domain.NewAPIError(http.StatusBadRequest, "VALIDATION_ERROR", "file must be a .csv"))
+		return
+	}
+	if fileHeader.Size > importMaxBytes {
+		fail(c, domain.ErrPayloadTooLarge)
+		return
+	}
+
 	f, err := fileHeader.Open()
 	if err != nil {
 		fail(c, domain.ErrInternal)
@@ -96,8 +115,11 @@ func (h *Handler) ImportOrders(c *gin.Context) {
 	}
 	defer f.Close()
 
-	replace := c.PostForm("replace") == "true"
-	result, err := h.analytics.ImportOrders(c.Request.Context(), f, replace)
+	opts := domain.ImportOptions{
+		Replace:    c.PostForm("replace") == "true",
+		OnConflict: c.PostForm("onConflict"),
+	}
+	result, err := h.analytics.ImportOrders(c.Request.Context(), f, opts)
 	if err != nil {
 		fail(c, err)
 		return

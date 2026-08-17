@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"analytics-dashboard-be/internal/domain"
 	"analytics-dashboard-be/internal/repository/postgres"
 	"analytics-dashboard-be/internal/service"
 )
@@ -32,7 +33,8 @@ var seedCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		n, err := postgres.NewOrderRepo(db).ImportOrders(cmd.Context(), orders, true /* replace */)
+		n, _, err := postgres.NewOrderRepo(db).ImportOrders(cmd.Context(), orders,
+			domain.ImportOptions{Replace: true, OnConflict: "update"})
 		if err != nil {
 			return err
 		}
