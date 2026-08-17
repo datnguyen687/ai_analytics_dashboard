@@ -17,6 +17,7 @@ import {
 } from "@/lib/api";
 import { messageForError } from "@/lib/errors";
 import { EMPTY_ORDER, OrderFormModal } from "@/components/order-form";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 const SORTS: { value: string; label: string }[] = [
   { value: "orderDate-desc", label: "Newest first" },
@@ -52,6 +53,8 @@ export default function OrdersPage() {
   // Create/edit modal + delete.
   const [modal, setModal] = useState<{ initial: OrderWrite; editingId: string | null } | null>(null);
   const [rowMsg, setRowMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<ApiOrder | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const openCreate = () => setModal({ initial: EMPTY_ORDER, editingId: null });
   const openEdit = (o: ApiOrder) =>
@@ -78,16 +81,21 @@ export default function OrdersPage() {
       editingId: o.orderId,
     });
 
-  const onDelete = async (o: ApiOrder) => {
-    if (!window.confirm(`Delete order ${o.orderId}? This cannot be undone.`)) return;
+  const doDelete = async () => {
+    if (!confirmDelete) return;
+    setDeleting(true);
     setRowMsg(null);
     setImportMsg(null);
     try {
-      await deleteOrder(o.orderId);
-      setRowMsg({ ok: true, text: `Order ${o.orderId} deleted.` });
+      await deleteOrder(confirmDelete.orderId);
+      setRowMsg({ ok: true, text: `Order ${confirmDelete.orderId} deleted.` });
       setReloadKey((k) => k + 1);
+      setConfirmDelete(null);
     } catch (err) {
       setRowMsg({ ok: false, text: messageForError(err) });
+      setConfirmDelete(null);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -308,7 +316,7 @@ export default function OrdersPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => onDelete(o)}
+                          onClick={() => setConfirmDelete(o)}
                           className="rounded-md border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--status-critical)] transition-colors hover:bg-[color-mix(in_srgb,var(--status-critical)_10%,transparent)]"
                         >
                           Delete
@@ -367,6 +375,18 @@ export default function OrdersPage() {
             setImportMsg(null);
             setReloadKey((k) => k + 1);
           }}
+        />
+      )}
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete order"
+          message={`Delete order ${confirmDelete.orderId}? This cannot be undone.`}
+          confirmLabel="Delete"
+          danger
+          busy={deleting}
+          onConfirm={doDelete}
+          onCancel={() => setConfirmDelete(null)}
         />
       )}
     </div>
