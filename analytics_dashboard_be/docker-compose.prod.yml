@@ -1,0 +1,55 @@
+# Production stack for the analytics backend.
+# Postgres & Redis are internal-only (no host ports); the API is bound to
+# localhost so nginx on the host reverse-proxies it over HTTPS.
+#
+# Env comes from a local .env file (see .env.production.example). Deploy:
+#   docker compose -f docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.prod.yml run --rm api seed
+#   docker compose -f docker-compose.prod.yml run --rm api user --username admin --password '…' --role ADMIN
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: analytics
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: analytics_dashboard
+    volumes:
+      - analytics_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U analytics -d analytics_dashboard"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    restart: always
+
+  api:
+    image: analytics-dashboard-be:prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      APP_ENV: production
+      PORT: "8080"
+      DATABASE_URL: postgres://analytics:${POSTGRES_PASSWORD}@postgres:5432/analytics_dashboard?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_TTL_HOURS: "24"
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      ASK_RATE_LIMIT: "15"
+      ASK_RATE_WINDOW_SECONDS: "60"
+    ports:
+      - "127.0.0.1:10600:8080"
+    restart: always
+
+volumes:
+  analytics_pg:

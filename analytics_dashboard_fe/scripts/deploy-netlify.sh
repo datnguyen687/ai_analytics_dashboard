@@ -38,6 +38,8 @@ fi
 echo "▶ Deploying to Netlify (runs the build via netlify.toml)…"
 # --build runs the `pnpm build` command from netlify.toml with the Next.js
 # runtime plugin, then uploads the result. netlify-cli is fetched on demand.
-pnpm dlx netlify-cli deploy --build ${PROD_FLAG} "${SITE_ARGS[@]}"
+# Pinned to v17 (supports Node 20); the package ships two bins so we select
+# `netlify` explicitly.
+pnpm --package=netlify-cli@17 dlx netlify deploy --build ${PROD_FLAG} "${SITE_ARGS[@]}"
 
 echo "✓ Done."

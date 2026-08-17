@@ -1,0 +1,10 @@
+.git
+bin/
+.env
+.env.*
+.vscode/
+*.log
+*.out
+*.test
+__debug_bin*
+db/schema.sql

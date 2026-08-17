@@ -12,7 +12,7 @@
   # Build-time API base. Override per-site in the Netlify UI (Site settings →
   # Environment variables) or via `netlify env:set`. NEXT_PUBLIC_* is inlined at
   # build time, so a change requires a rebuild/redeploy.
-  NEXT_PUBLIC_API_URL = "http://localhost:8080"
+  NEXT_PUBLIC_API_URL = "https://news.3kroh.xyz"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
