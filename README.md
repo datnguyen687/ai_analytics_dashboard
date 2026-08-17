@@ -8,6 +8,21 @@ AI only *interprets* questions and deterministic tools compute every number.
 - **Frontend** — [`analytics_dashboard_fe/`](analytics_dashboard_fe) · Next.js · pnpm · Recharts · Tailwind
 - **Backend** — [`analytics_dashboard_be/`](analytics_dashboard_be) · Go · Gin · Postgres (sqlx) · Redis · dbmate · Cobra
 
+## Live demo
+
+| | URL |
+|---|---|
+| **App (frontend)** | https://ai-logistics-analytics.netlify.app |
+| **API (backend)** | https://news.3kroh.xyz |
+
+**Login:** `admin` / `Admin123456` (ADMIN). Accounts are provisioned by an admin —
+there is no public sign-up. Both USER and ADMIN can use the dashboard; only ADMIN
+sees the Administration section and can create/edit/delete orders or import CSVs.
+
+> The demo database may start empty — sign in as admin and use **Orders → Import
+> CSV** (the sample file is at `analytics_dashboard_be/data/mock_logistics_data.csv`)
+> to load data.
+
 ## Highlights
 
 | Area | What it does |
@@ -16,8 +31,9 @@ AI only *interprets* questions and deterministic tools compute every number.
 | **Diagnostic** | Ask questions in plain English; answers come with a chart, a query plan, and the underlying data |
 | **Predictive** | Demand forecasting (linear trend + moving average) with inventory recommendation |
 | **AI orchestration** | Google Gemini interprets the question into a validated plan; deterministic SQL tools compute — **the model never invents numbers** |
+| **Data management** | Searchable/sortable/paginated orders table; ADMIN order CRUD; CSV import (validated, with duplicate-handling: replace / ignore / replace-all) |
 | **Security** | JWT auth (username/password), roles (USER/ADMIN) with claims, an ADMIN-only section, per-user rate limiting, request-size limits |
-| **Performance** | Redis caching for dashboard/orders/forecast with normalized keys |
+| **Performance** | Concurrent dashboard aggregation; Redis caching for dashboard/orders/forecast with normalized keys, invalidated on writes |
 | **Quality** | ~86% backend unit-test coverage |
 
 ## Architecture
@@ -126,8 +142,10 @@ ai_analytics_dashboard/
 
 ## Notes & limitations
 
-- The dataset is a **400-row sample**, treated read-only. Forecasts are directional
-  (trend + level, no seasonality). "Lateness" is read from the `status` column.
+- Ships with a **400-row sample** dataset (`analytics_dashboard_be/data/`). Orders can
+  be managed via the UI (ADMIN CRUD + CSV import) or seeded from the CLI.
+- Forecasts are directional (trend + level, no seasonality). "Lateness" is read from
+  the `status` column.
 - There is **no public sign-up** — accounts are provisioned via the `user` CLI /
   `create-user.sh` script.
 - More detail per side: [backend README](analytics_dashboard_be/README.md) ·
