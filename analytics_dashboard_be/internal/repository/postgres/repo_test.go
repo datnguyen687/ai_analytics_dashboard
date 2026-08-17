@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 
@@ -123,6 +124,61 @@ func TestOrderRepoFiltersAndOrders(t *testing.T) {
 	}
 	if sticker.Total > page.Total {
 		t.Fatal("search should not increase total")
+	}
+}
+
+func TestOrderCRUDRoundtrip(t *testing.T) {
+	repo := NewOrderRepo(testDB(t))
+	ctx := context.Background()
+	const id = "__test_order__"
+	repo.db.Exec("DELETE FROM orders WHERE order_id = $1", id) // clean slate
+
+	o := domain.Order{
+		ClientID: "CL-TEST", OrderID: id, OrderDate: time.Now(), Carrier: "DHL",
+		OriginCity: "A", DestinationCity: "B", Status: domain.StatusDelivered,
+		SKU: "SKU-T", Category: "PAPER", Quantity: 3, UnitPrice: 5, OrderValue: 15,
+		Region: "EU", Warehouse: "LON-FC1",
+	}
+	if err := repo.CreateOrder(ctx, o); err != nil {
+		t.Fatal(err)
+	}
+	// Duplicate create → conflict.
+	if err := repo.CreateOrder(ctx, o); err != domain.ErrConflict {
+		t.Fatalf("dup create err = %v, want ErrConflict", err)
+	}
+
+	got, found, err := repo.GetOrder(ctx, id)
+	if err != nil || !found {
+		t.Fatalf("get: found=%v err=%v", found, err)
+	}
+	if got.Carrier != "DHL" || got.Quantity != 3 {
+		t.Fatalf("get mismatch: %+v", got)
+	}
+
+	o.Status = domain.StatusDelayed
+	o.Quantity = 9
+	found, err = repo.UpdateOrder(ctx, o)
+	if err != nil || !found {
+		t.Fatalf("update: found=%v err=%v", found, err)
+	}
+	got, _, _ = repo.GetOrder(ctx, id)
+	if got.Status != domain.StatusDelayed || got.Quantity != 9 {
+		t.Fatalf("update not applied: %+v", got)
+	}
+
+	found, err = repo.DeleteOrder(ctx, id)
+	if err != nil || !found {
+		t.Fatalf("delete: found=%v err=%v", found, err)
+	}
+	if _, found, _ := repo.GetOrder(ctx, id); found {
+		t.Fatal("order still present after delete")
+	}
+	// Update/delete of a missing row → found=false.
+	if found, _ := repo.UpdateOrder(ctx, o); found {
+		t.Fatal("update missing should report not found")
+	}
+	if found, _ := repo.DeleteOrder(ctx, id); found {
+		t.Fatal("delete missing should report not found")
 	}
 }
 

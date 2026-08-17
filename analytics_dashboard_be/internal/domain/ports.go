@@ -19,6 +19,12 @@ type OrderRepository interface {
 	// ImportOrders upserts orders by order_id (optionally truncating first).
 	// Returns the number of rows written.
 	ImportOrders(ctx context.Context, orders []Order, replace bool) (int, error)
+
+	// --- single-order CRUD ---
+	GetOrder(ctx context.Context, orderID string) (Order, bool, error)
+	CreateOrder(ctx context.Context, o Order) error                 // ErrConflict if order_id exists
+	UpdateOrder(ctx context.Context, o Order) (found bool, err error)
+	DeleteOrder(ctx context.Context, orderID string) (found bool, err error)
 }
 
 // MonthUnits is one month of summed shipped units for forecasting.

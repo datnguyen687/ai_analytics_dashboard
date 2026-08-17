@@ -44,7 +44,7 @@ func NewRouter(h *Handler, authH *AuthHandler, auth *service.AuthService, askRL 
 				strings.HasPrefix(origin, "http://localhost:") ||
 				strings.HasPrefix(origin, "http://127.0.0.1:")
 		},
-		AllowMethods:     []string{"GET", "POST", "OPTIONS"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
@@ -66,6 +66,7 @@ func NewRouter(h *Handler, authH *AuthHandler, auth *service.AuthService, askRL 
 		protected.GET("/suggestions", h.Suggestions)
 		protected.GET("/dashboard", h.Dashboard)
 		protected.GET("/orders", h.Orders)
+		protected.GET("/orders/:orderId", h.GetOrder)
 		protected.GET("/forecast", h.Forecast)
 		// The AI endpoint is additionally rate-limited per user.
 		protected.POST("/ask",
@@ -79,6 +80,9 @@ func NewRouter(h *Handler, authH *AuthHandler, auth *service.AuthService, askRL 
 	{
 		admin.GET("/users", authH.Users)
 		admin.POST("/orders/import", h.ImportOrders)
+		admin.POST("/orders", h.CreateOrder)
+		admin.PUT("/orders/:orderId", h.UpdateOrder)
+		admin.DELETE("/orders/:orderId", h.DeleteOrder)
 	}
 	return r
 }

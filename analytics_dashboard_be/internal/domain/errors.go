@@ -29,6 +29,8 @@ var (
 	ErrTokenExpired       = NewAPIError(http.StatusUnauthorized, "AUTH_TOKEN_EXPIRED", "authorization token expired")
 	ErrForbidden          = NewAPIError(http.StatusForbidden, "AUTH_FORBIDDEN", "insufficient permissions")
 	ErrValidation         = NewAPIError(http.StatusBadRequest, "VALIDATION_ERROR", "invalid request")
+	ErrNotFound           = NewAPIError(http.StatusNotFound, "NOT_FOUND", "resource not found")
+	ErrConflict           = NewAPIError(http.StatusConflict, "CONFLICT", "resource already exists")
 	ErrRateLimited        = NewAPIError(http.StatusTooManyRequests, "RATE_LIMITED", "too many requests")
 	ErrPayloadTooLarge    = NewAPIError(http.StatusRequestEntityTooLarge, "PAYLOAD_TOO_LARGE", "request body too large")
 	ErrInternal           = NewAPIError(http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")

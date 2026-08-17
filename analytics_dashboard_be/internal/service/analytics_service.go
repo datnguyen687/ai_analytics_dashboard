@@ -90,6 +90,74 @@ func (s *AnalyticsService) ImportOrders(ctx context.Context, r io.Reader, replac
 	return domain.ImportResult{Imported: n, Failed: len(rowErrs), Errors: rowErrs, Replaced: replace}, nil
 }
 
+var validStatuses = map[domain.OrderStatus]bool{
+	domain.StatusDelivered: true, domain.StatusDelayed: true, domain.StatusInTransit: true,
+	domain.StatusException: true, domain.StatusCanceled: true,
+}
+
+func validateOrder(o domain.Order) error {
+	if strings.TrimSpace(o.OrderID) == "" {
+		return domain.NewAPIError(400, "VALIDATION_ERROR", "order_id is required")
+	}
+	if !validStatuses[o.Status] {
+		return domain.NewAPIError(400, "VALIDATION_ERROR", "invalid status")
+	}
+	if o.Quantity < 0 || o.OrderValue < 0 {
+		return domain.NewAPIError(400, "VALIDATION_ERROR", "quantity and value must be non-negative")
+	}
+	return nil
+}
+
+// GetOrder reads a single order; returns ErrNotFound when it doesn't exist.
+func (s *AnalyticsService) GetOrder(ctx context.Context, orderID string) (domain.Order, error) {
+	o, found, err := s.repo.GetOrder(ctx, orderID)
+	if err != nil {
+		return domain.Order{}, err
+	}
+	if !found {
+		return domain.Order{}, domain.ErrNotFound
+	}
+	return o, nil
+}
+
+func (s *AnalyticsService) CreateOrder(ctx context.Context, o domain.Order) (domain.Order, error) {
+	if err := validateOrder(o); err != nil {
+		return domain.Order{}, err
+	}
+	if err := s.repo.CreateOrder(ctx, o); err != nil {
+		return domain.Order{}, err
+	}
+	s.invalidate(ctx)
+	return o, nil
+}
+
+func (s *AnalyticsService) UpdateOrder(ctx context.Context, o domain.Order) (domain.Order, error) {
+	if err := validateOrder(o); err != nil {
+		return domain.Order{}, err
+	}
+	found, err := s.repo.UpdateOrder(ctx, o)
+	if err != nil {
+		return domain.Order{}, err
+	}
+	if !found {
+		return domain.Order{}, domain.ErrNotFound
+	}
+	s.invalidate(ctx)
+	return o, nil
+}
+
+func (s *AnalyticsService) DeleteOrder(ctx context.Context, orderID string) error {
+	found, err := s.repo.DeleteOrder(ctx, orderID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return domain.ErrNotFound
+	}
+	s.invalidate(ctx)
+	return nil
+}
+
 // invalidate drops the cached read models after a data change.
 func (s *AnalyticsService) invalidate(ctx context.Context) {
 	for _, p := range []string{"dashboard:", "orders:", "forecast:", "meta"} {

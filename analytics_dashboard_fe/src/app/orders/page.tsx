@@ -8,12 +8,15 @@ import { useAuth } from "@/lib/auth-context";
 import { DEFAULT_FILTERS, fmtMoney } from "@/lib/analytics";
 import {
   API_BASE,
+  deleteOrder,
   getOrders,
   importOrders,
   type ApiOrder,
   type OrderPageResponse,
+  type OrderWrite,
 } from "@/lib/api";
 import { messageForError } from "@/lib/errors";
+import { EMPTY_ORDER, OrderFormModal } from "@/components/order-form";
 
 const SORTS: { value: string; label: string }[] = [
   { value: "orderDate-desc", label: "Newest first" },
@@ -45,6 +48,48 @@ export default function OrdersPage() {
   const [replaceAll, setReplaceAll] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Create/edit modal + delete.
+  const [modal, setModal] = useState<{ initial: OrderWrite; editingId: string | null } | null>(null);
+  const [rowMsg, setRowMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const openCreate = () => setModal({ initial: EMPTY_ORDER, editingId: null });
+  const openEdit = (o: ApiOrder) =>
+    setModal({
+      initial: {
+        clientId: o.clientId,
+        orderId: o.orderId,
+        orderDate: o.orderDate.slice(0, 10),
+        deliveryDate: o.deliveryDate ? o.deliveryDate.slice(0, 10) : "",
+        carrier: o.carrier,
+        originCity: o.originCity,
+        destinationCity: o.destinationCity,
+        status: o.status,
+        sku: o.sku,
+        category: o.category,
+        quantity: o.quantity,
+        unitPrice: o.unitPrice,
+        orderValue: o.orderValue,
+        isPromo: o.isPromo,
+        promoDiscountPct: o.promoDiscountPct,
+        region: o.region,
+        warehouse: o.warehouse,
+      },
+      editingId: o.orderId,
+    });
+
+  const onDelete = async (o: ApiOrder) => {
+    if (!window.confirm(`Delete order ${o.orderId}? This cannot be undone.`)) return;
+    setRowMsg(null);
+    setImportMsg(null);
+    try {
+      await deleteOrder(o.orderId);
+      setRowMsg({ ok: true, text: `Order ${o.orderId} deleted.` });
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      setRowMsg({ ok: false, text: messageForError(err) });
+    }
+  };
 
   const onFilePicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -148,6 +193,17 @@ export default function OrdersPage() {
 
           {isAdmin && (
             <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={openCreate}
+                className="flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-white"
+                style={{ background: "var(--series-1)" }}
+              >
+                <svg viewBox="0 0 16 16" aria-hidden className="size-3.5">
+                  <path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                </svg>
+                Add order
+              </button>
               <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
                 <input
                   type="checkbox"
@@ -186,17 +242,17 @@ export default function OrdersPage() {
           )}
         </div>
 
-        {importMsg && (
+        {(importMsg || rowMsg) && (
           <p
             className="rounded-lg px-3 py-2 text-xs font-medium"
             style={{
-              color: importMsg.ok ? "var(--status-good)" : "var(--status-critical)",
-              background: importMsg.ok
+              color: (importMsg ?? rowMsg)!.ok ? "var(--status-good)" : "var(--status-critical)",
+              background: (importMsg ?? rowMsg)!.ok
                 ? "color-mix(in srgb, var(--status-good) 10%, transparent)"
                 : "color-mix(in srgb, var(--status-critical) 10%, transparent)",
             }}
           >
-            {importMsg.text}
+            {(importMsg ?? rowMsg)!.text}
           </p>
         )}
       </div>
@@ -213,6 +269,7 @@ export default function OrdersPage() {
                     </th>
                   ),
                 )}
+                {isAdmin && <th className="px-3 py-2.5 text-right font-medium">Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -239,11 +296,31 @@ export default function OrdersPage() {
                   <td className="px-3 py-2">
                     <StatusChip status={o.status} />
                   </td>
+                  {isAdmin && (
+                    <td className="px-3 py-2">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(o)}
+                          className="rounded-md border border-[var(--border)] px-2 py-1 text-[11px] transition-colors hover:bg-[var(--hover)]"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDelete(o)}
+                          className="rounded-md border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--status-critical)] transition-colors hover:bg-[color-mix(in_srgb,var(--status-critical)_10%,transparent)]"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-3 py-10 text-center text-[var(--muted)]">
+                  <td colSpan={isAdmin ? 11 : 10} className="px-3 py-10 text-center text-[var(--muted)]">
                     {emptyMessage}
                   </td>
                 </tr>
@@ -279,6 +356,19 @@ export default function OrdersPage() {
           </div>
         </div>
       </Card>
+
+      {modal && (
+        <OrderFormModal
+          initial={modal.initial}
+          editingId={modal.editingId}
+          onClose={() => setModal(null)}
+          onSaved={(text) => {
+            setRowMsg({ ok: true, text });
+            setImportMsg(null);
+            setReloadKey((k) => k + 1);
+          }}
+        />
+      )}
     </div>
   );
 }

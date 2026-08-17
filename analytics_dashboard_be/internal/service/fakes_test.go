@@ -12,6 +12,39 @@ import (
 
 type fakeOrderRepo struct {
 	ordersCalls int
+	existing    map[string]bool
+}
+
+func (f *fakeOrderRepo) has(id string) bool { return f.existing != nil && f.existing[id] }
+
+func (f *fakeOrderRepo) GetOrder(_ context.Context, id string) (domain.Order, bool, error) {
+	if f.has(id) {
+		return domain.Order{OrderID: id, Status: domain.StatusDelivered}, true, nil
+	}
+	return domain.Order{}, false, nil
+}
+
+func (f *fakeOrderRepo) CreateOrder(_ context.Context, o domain.Order) error {
+	if f.has(o.OrderID) {
+		return domain.ErrConflict
+	}
+	if f.existing == nil {
+		f.existing = map[string]bool{}
+	}
+	f.existing[o.OrderID] = true
+	return nil
+}
+
+func (f *fakeOrderRepo) UpdateOrder(_ context.Context, o domain.Order) (bool, error) {
+	return f.has(o.OrderID), nil
+}
+
+func (f *fakeOrderRepo) DeleteOrder(_ context.Context, id string) (bool, error) {
+	if f.has(id) {
+		delete(f.existing, id)
+		return true, nil
+	}
+	return false, nil
 }
 
 func (f *fakeOrderRepo) Meta(context.Context) (domain.Meta, error) {

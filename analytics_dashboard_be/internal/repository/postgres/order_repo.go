@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -331,6 +333,63 @@ func (r *OrderRepo) Orders(ctx context.Context, q domain.OrderQuery) (domain.Ord
 		return page, err
 	}
 	return page, nil
+}
+
+const orderInsertCols = `client_id, order_id, order_date, delivery_date, carrier, origin_city,
+	destination_city, status, sku, product_category, quantity, unit_price_usd, order_value_usd,
+	is_promo, promo_discount_pct, region, warehouse, transit_days`
+
+func orderArgs(o domain.Order) []interface{} {
+	return []interface{}{
+		o.ClientID, o.OrderID, o.OrderDate, o.DeliveryDate, o.Carrier, o.OriginCity, o.DestinationCity,
+		o.Status, o.SKU, o.Category, o.Quantity, o.UnitPrice, o.OrderValue, o.IsPromo,
+		o.PromoDiscount, o.Region, o.Warehouse, o.TransitDays,
+	}
+}
+
+func (r *OrderRepo) GetOrder(ctx context.Context, orderID string) (domain.Order, bool, error) {
+	var o domain.Order
+	err := r.db.GetContext(ctx, &o,
+		fmt.Sprintf("SELECT %s FROM orders WHERE order_id = $1", orderColumns), orderID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.Order{}, false, nil
+	}
+	return o, err == nil, err
+}
+
+func (r *OrderRepo) CreateOrder(ctx context.Context, o domain.Order) error {
+	_, err := r.db.ExecContext(ctx, fmt.Sprintf(
+		"INSERT INTO orders (%s) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)",
+		orderInsertCols), orderArgs(o)...)
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) && pqErr.Code == "23505" { // unique_violation
+		return domain.ErrConflict
+	}
+	return err
+}
+
+func (r *OrderRepo) UpdateOrder(ctx context.Context, o domain.Order) (bool, error) {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE orders SET
+			client_id=$1, order_date=$3, delivery_date=$4, carrier=$5, origin_city=$6,
+			destination_city=$7, status=$8, sku=$9, product_category=$10, quantity=$11,
+			unit_price_usd=$12, order_value_usd=$13, is_promo=$14, promo_discount_pct=$15,
+			region=$16, warehouse=$17, transit_days=$18
+		WHERE order_id=$2`, orderArgs(o)...)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+func (r *OrderRepo) DeleteOrder(ctx context.Context, orderID string) (bool, error) {
+	res, err := r.db.ExecContext(ctx, "DELETE FROM orders WHERE order_id = $1", orderID)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
 }
 
 // ImportOrders writes orders in a single transaction, upserting by order_id.

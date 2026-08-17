@@ -45,6 +45,24 @@ func (fakeRepo) MonthlyUnits(context.Context, string) ([]domain.MonthUnits, erro
 func (fakeRepo) ImportOrders(_ context.Context, orders []domain.Order, _ bool) (int, error) {
 	return len(orders), nil
 }
+func (fakeRepo) GetOrder(_ context.Context, id string) (domain.Order, bool, error) {
+	if id == "ORD-1" {
+		return domain.Order{OrderID: "ORD-1", Status: domain.StatusDelivered}, true, nil
+	}
+	return domain.Order{}, false, nil
+}
+func (fakeRepo) CreateOrder(_ context.Context, o domain.Order) error {
+	if o.OrderID == "ORD-DUP" {
+		return domain.ErrConflict
+	}
+	return nil
+}
+func (fakeRepo) UpdateOrder(_ context.Context, o domain.Order) (bool, error) {
+	return o.OrderID == "ORD-1", nil
+}
+func (fakeRepo) DeleteOrder(_ context.Context, id string) (bool, error) {
+	return id == "ORD-1", nil
+}
 
 func buildRouter(t *testing.T) *gin.Engine {
 	t.Helper()
@@ -243,6 +261,58 @@ func TestInvalidTokenRejected(t *testing.T) {
 	w := do(t, buildRouter(t), "GET", "/api/v1/meta", "garbage.token.here", "")
 	if w.Code != 401 || codeOf(w) != "AUTH_TOKEN_INVALID" {
 		t.Fatalf("got %d %s", w.Code, codeOf(w))
+	}
+}
+
+func TestOrderCRUD(t *testing.T) {
+	r := buildRouter(t)
+	userTok := loginToken(t, r, "alice")
+	adminTok := loginToken(t, r, "boss")
+
+	valid := `{"orderId":"ORD-NEW","orderDate":"2025-06-01","status":"delivered","quantity":1,"orderValue":10}`
+
+	// USER cannot create.
+	if w := do(t, r, "POST", "/api/v1/admin/orders", userTok, valid); w.Code != 403 {
+		t.Fatalf("USER create = %d, want 403", w.Code)
+	}
+	// ADMIN create → 201.
+	if w := do(t, r, "POST", "/api/v1/admin/orders", adminTok, valid); w.Code != 201 {
+		t.Fatalf("create = %d %s, want 201", w.Code, w.Body.String())
+	}
+	// Duplicate → 409.
+	dup := `{"orderId":"ORD-DUP","orderDate":"2025-06-01","status":"delivered"}`
+	if w := do(t, r, "POST", "/api/v1/admin/orders", adminTok, dup); w.Code != 409 || codeOf(w) != "CONFLICT" {
+		t.Fatalf("dup create = %d %s, want 409", w.Code, codeOf(w))
+	}
+	// Invalid date → 400.
+	if w := do(t, r, "POST", "/api/v1/admin/orders", adminTok, `{"orderId":"X","orderDate":"nope","status":"delivered"}`); w.Code != 400 {
+		t.Fatalf("bad date = %d, want 400", w.Code)
+	}
+	// Read single (both roles).
+	if w := do(t, r, "GET", "/api/v1/orders/ORD-1", userTok, ""); w.Code != 200 {
+		t.Fatalf("get existing = %d, want 200", w.Code)
+	}
+	if w := do(t, r, "GET", "/api/v1/orders/GHOST", userTok, ""); w.Code != 404 || codeOf(w) != "NOT_FOUND" {
+		t.Fatalf("get missing = %d %s, want 404", w.Code, codeOf(w))
+	}
+	// Update existing → 200; missing → 404.
+	upd := `{"orderId":"ORD-1","orderDate":"2025-06-02","status":"delayed"}`
+	if w := do(t, r, "PUT", "/api/v1/admin/orders/ORD-1", adminTok, upd); w.Code != 200 {
+		t.Fatalf("update = %d %s, want 200", w.Code, w.Body.String())
+	}
+	if w := do(t, r, "PUT", "/api/v1/admin/orders/GHOST", adminTok,
+		`{"orderId":"GHOST","orderDate":"2025-06-02","status":"delayed"}`); w.Code != 404 {
+		t.Fatalf("update missing = %d, want 404", w.Code)
+	}
+	// Delete existing → 200; missing → 404; USER → 403.
+	if w := do(t, r, "DELETE", "/api/v1/admin/orders/ORD-1", userTok, ""); w.Code != 403 {
+		t.Fatalf("USER delete = %d, want 403", w.Code)
+	}
+	if w := do(t, r, "DELETE", "/api/v1/admin/orders/ORD-1", adminTok, ""); w.Code != 200 {
+		t.Fatalf("delete = %d, want 200", w.Code)
+	}
+	if w := do(t, r, "DELETE", "/api/v1/admin/orders/GHOST", adminTok, ""); w.Code != 404 {
+		t.Fatalf("delete missing = %d, want 404", w.Code)
 	}
 }
 

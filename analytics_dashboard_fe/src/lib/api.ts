@@ -298,3 +298,43 @@ export function importOrders(
     signal,
   });
 }
+
+export interface OrderWrite {
+  clientId: string;
+  orderId: string;
+  orderDate: string; // YYYY-MM-DD
+  deliveryDate: string; // YYYY-MM-DD or ""
+  carrier: string;
+  originCity: string;
+  destinationCity: string;
+  status: string;
+  sku: string;
+  category: string;
+  quantity: number;
+  unitPrice: number;
+  orderValue: number;
+  isPromo: boolean;
+  promoDiscountPct: number;
+  region: string;
+  warehouse: string;
+}
+
+export function createOrder(o: OrderWrite, signal?: AbortSignal): Promise<ApiOrder> {
+  return postJSON<ApiOrder>(`/api/v1/admin/orders`, o, signal);
+}
+
+export function updateOrder(orderId: string, o: OrderWrite, signal?: AbortSignal): Promise<ApiOrder> {
+  return request<ApiOrder>(`${BASE}/api/v1/admin/orders/${encodeURIComponent(orderId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(o),
+    signal,
+  });
+}
+
+export function deleteOrder(orderId: string, signal?: AbortSignal): Promise<{ deleted: string }> {
+  return request<{ deleted: string }>(`${BASE}/api/v1/admin/orders/${encodeURIComponent(orderId)}`, {
+    method: "DELETE",
+    signal,
+  });
+}
