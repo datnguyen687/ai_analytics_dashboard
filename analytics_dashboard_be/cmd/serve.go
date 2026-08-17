@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/spf13/cobra"
 
 	"analytics-dashboard-be/internal/cache"
+	"analytics-dashboard-be/internal/config"
 	"analytics-dashboard-be/internal/delivery/http"
 	"analytics-dashboard-be/internal/domain"
 	"analytics-dashboard-be/internal/repository/postgres"
@@ -39,8 +41,12 @@ var serveCmd = &cobra.Command{
 		if err != nil {
 			log.Printf("could not preload meta (%v) — is the DB seeded?", err)
 		}
-		if cfg.JWTSecret == "dev-insecure-change-me" {
-			log.Printf("WARNING: using the default JWT secret — set JWT_SECRET in production")
+		if cfg.JWTSecret == config.DefaultJWTSecret {
+			if cfg.Env == "production" {
+				// Fail fast: the default secret lets anyone forge admin tokens.
+				return fmt.Errorf("refusing to start: JWT_SECRET must be set to a strong value in production (APP_ENV=production)")
+			}
+			log.Printf("WARNING: using the default JWT secret — set JWT_SECRET before deploying (APP_ENV=production enforces this)")
 		}
 		authSvc := service.NewAuthService(userRepo, cfg.JWTSecret, cfg.JWTTTLHours)
 

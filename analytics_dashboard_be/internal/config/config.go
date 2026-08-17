@@ -8,7 +8,12 @@ import (
 
 // Config holds all runtime settings, sourced from environment variables so no
 // secrets live in the repository.
+// DefaultJWTSecret is the placeholder secret; the server refuses to start with it
+// in production (see cmd/serve.go).
+const DefaultJWTSecret = "dev-insecure-change-me"
+
 type Config struct {
+	Env          string // "development" (default) | "production"
 	Port         string
 	DatabaseURL  string
 	RedisURL     string
@@ -27,6 +32,7 @@ type Config struct {
 
 func Load() Config {
 	return Config{
+		Env:         env("APP_ENV", "development"),
 		Port:        env("PORT", "8080"),
 		DatabaseURL: env("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/analytics?sslmode=disable"),
 		RedisURL:    env("REDIS_URL", "redis://localhost:6379/0"),
@@ -35,7 +41,7 @@ func Load() Config {
 		SeedCSVPath:  env("SEED_CSV_PATH", "data/mock_logistics_data.csv"),
 		GeminiAPIKey: env("GEMINI_API_KEY", ""),
 		GeminiModel:  env("GEMINI_MODEL", "gemini-3.5-flash"),
-		JWTSecret:     env("JWT_SECRET", "dev-insecure-change-me"),
+		JWTSecret:     env("JWT_SECRET", DefaultJWTSecret),
 		JWTTTLHours:   envInt("JWT_TTL_HOURS", 24),
 		AskRateLimit:     envInt("ASK_RATE_LIMIT", 15),
 		AskRateWindow:    envInt("ASK_RATE_WINDOW_SECONDS", 60),

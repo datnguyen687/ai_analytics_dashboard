@@ -32,16 +32,23 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function DashboardPage() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [debouncedFilters, setDebouncedFilters] = useState(filters);
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // One API call per filter change — the backend assembles every aggregate.
+  // Coalesce rapid filter clicks (multi-selects, date spinners) into one fetch.
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedFilters(filters), 200);
+    return () => clearTimeout(id);
+  }, [filters]);
+
+  // One API call per (settled) filter change — the backend assembles every aggregate.
   useEffect(() => {
     const ctrl = new AbortController();
     setLoading(true);
     setError(null);
-    getDashboard(filters, ctrl.signal)
+    getDashboard(debouncedFilters, ctrl.signal)
       .then((d) => {
         setData(d);
         setLoading(false);
@@ -52,7 +59,7 @@ export default function DashboardPage() {
         setLoading(false);
       });
     return () => ctrl.abort();
-  }, [filters]);
+  }, [debouncedFilters]);
 
   const monthly = useMemo(
     () => (data?.revenueTrend ?? []).map((t) => ({ ...t, bucket: fmtMonth(t.bucket) })),

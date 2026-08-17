@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 
+	"golang.org/x/sync/errgroup"
+
 	"analytics-dashboard-be/internal/domain"
 )
 
@@ -48,27 +50,20 @@ func (s *AnalyticsService) Dashboard(ctx context.Context, f domain.Filters) (dom
 
 	var d domain.Dashboard
 	d.Filters = f
-	var err error
-	if d.KPIs, err = s.repo.KPIs(ctx, f); err != nil {
-		return d, err
-	}
-	if d.RevenueTrend, err = s.repo.TimeSeries(ctx, f, "month"); err != nil {
-		return d, err
-	}
-	if d.StatusMix, err = s.repo.StatusMix(ctx, f); err != nil {
-		return d, err
-	}
-	if d.CategoryStack, err = s.repo.CategoryStack(ctx, f, 5); err != nil {
-		return d, err
-	}
-	if d.Carriers, err = s.repo.Breakdown(ctx, f, "carrier", 0); err != nil {
-		return d, err
-	}
-	if d.Categories, err = s.repo.Breakdown(ctx, f, "product_category", 0); err != nil {
-		return d, err
-	}
-	if d.Destinations, err = s.repo.Breakdown(ctx, f, "destination_city", 8); err != nil {
-		return d, err
+
+	// The seven aggregates are independent — run them concurrently. Each goroutine
+	// writes a distinct field of d (no shared-write race). errgroup cancels the
+	// shared context and returns the first error.
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() (err error) { d.KPIs, err = s.repo.KPIs(gctx, f); return })
+	g.Go(func() (err error) { d.RevenueTrend, err = s.repo.TimeSeries(gctx, f, "month"); return })
+	g.Go(func() (err error) { d.StatusMix, err = s.repo.StatusMix(gctx, f); return })
+	g.Go(func() (err error) { d.CategoryStack, err = s.repo.CategoryStack(gctx, f, 5); return })
+	g.Go(func() (err error) { d.Carriers, err = s.repo.Breakdown(gctx, f, "carrier", 0); return })
+	g.Go(func() (err error) { d.Categories, err = s.repo.Breakdown(gctx, f, "product_category", 0); return })
+	g.Go(func() (err error) { d.Destinations, err = s.repo.Breakdown(gctx, f, "destination_city", 8); return })
+	if err := g.Wait(); err != nil {
+		return domain.Dashboard{}, err
 	}
 
 	_ = s.cache.Set(ctx, key, d, s.cacheTTL)
