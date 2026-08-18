@@ -140,6 +140,13 @@ ai_analytics_dashboard/
 └── analytics_dashboard_fe/   # Next.js app — src/app (pages), src/components, src/lib (api client, auth, errors)
 ```
 
+## AI assistance
+
+This project was built with the help of an AI coding assistant (Anthropic's Claude),
+used for implementation, refactoring, test-writing, and deployment. All code was
+reviewed and the architecture and trade-offs are documented here and in the per-side
+READMEs.
+
 ## Notes & limitations
 
 - Ships with a **400-row sample** dataset (`analytics_dashboard_be/data/`). Orders can
